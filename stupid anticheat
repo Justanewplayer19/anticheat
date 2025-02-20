@@ -1,0 +1,90 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Get the SpawnTruck event
+local SpawnTruckEvent = ReplicatedStorage:WaitForChild("Events"):WaitForChild("SpawnTruck")
+local playerCooldowns = {}
+
+-- this stops people from being annoying and spamming trucks all over the place
+SpawnTruckEvent.OnServerEvent:Connect(function(player, location)
+    local currentTime = tick()
+
+    -- oh look, another player trying to ruin the game, let's track them
+    if not playerCooldowns[player] then
+        playerCooldowns[player] = { lastTime = 0, count = 0 }
+    end
+
+    local data = playerCooldowns[player]
+
+    -- if they keep clicking the button like a monkey, increase the count
+    if currentTime - data.lastTime < 3 then
+        data.count = data.count + 1
+    else
+        data.count = 1 -- okay fine, they waited, we forgive them
+    end
+
+    data.lastTime = currentTime
+
+    -- if they send like 5 requests in 3 seconds, they clearly have nothing better to do
+    if data.count > 5 then
+        player:Kick("nice try, but no.")
+        warn(player.Name .. " got kicked for remote event spam. congrats, you played yourself.")
+    else
+        spawnTruck(player, location) -- fine, let them have their stupid truck
+    end
+end)
+
+-- oh great, another genius trying to teleport
+local function monitorPlayerMovement(player)
+    local character = player.Character
+    if not character then return end
+
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+
+    local lastPosition = rootPart.Position
+
+    while task.wait(0.1) do
+        if not player or not player.Parent then return end -- they left? well that's one less problem
+
+        local newPosition = rootPart.Position
+        local distance = (newPosition - lastPosition).magnitude
+
+        -- if they suddenly move like 500 studs, they're obviously hacking
+        if distance > 500 then
+            player:Kick("wow, so impressive. too bad you're banned.")
+            warn(player.Name .. " tried teleporting like a hacker. enjoy the ban.")
+            return
+        end
+
+        lastPosition = newPosition
+    end
+end
+
+-- because apparently, people love leaving trash everywhere
+local function cleanUpLagObjects()
+    while true do
+        task.wait(10) -- every 10 seconds, we clean up their mess
+
+        for _, object in pairs(workspace:GetChildren()) do
+            -- oh wow, another abandoned truck
+            if object:IsA("Model") and object.Name == "Truck" and object:GetAttribute("SpawnTime") then
+                local spawnTime = object:GetAttribute("SpawnTime")
+                if tick() - spawnTime > 300 then -- 5 minutes? yeah, that's long enough.
+                    object:Destroy()
+                end
+            end
+        end
+    end
+end
+
+-- yay, another player joins. let's see how long before they try cheating
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(3) -- give them a few seconds to settle in
+        monitorPlayerMovement(player) -- now let's make sure they don't do anything stupid
+    end)
+end)
+
+-- start the cleanup loop because no one else is going to do it
+task.spawn(cleanUpLagObjects)
